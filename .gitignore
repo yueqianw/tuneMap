@@ -1,0 +1,35 @@
+# Node.js related files and folders
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/ # If using pnpm
+dist/        # Common build output folder
+build/       # Another common build output folder
+out/         # Another common build output folder
+.next/       # If using Next.js
+.nuxt/       # If using Nuxt.js
+.svelte-kit/ # If using SvelteKit
+
+# IDE and OS generated files
+.DS_Store    # macOS specific
+.vscode/     # VS Code settings (optional, sometimes you want to share these)
+.idea/       # IntelliJ/WebStorm specific
+Thumbs.db    # Windows specific
+Desktop.ini  # Windows specific
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+
+# 忽略所有上传的临时文件
+temp_uploads/

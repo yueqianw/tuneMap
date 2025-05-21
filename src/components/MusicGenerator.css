@@ -1,0 +1,282 @@
+/* 整体容器布局 */
+.map-music-container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 左侧地图区域 */
+.map-container {
+  flex: 1;
+  position: relative;
+  min-width: 65%;
+  height: 100%;
+}
+
+.google-map {
+  width: 100%;
+  height: 100%;
+}
+
+.map-overlay {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background-color: rgba(255, 255, 255, 0.85);
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  max-width: 300px;
+}
+
+.map-overlay h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.map-overlay p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+/* Google地图信息窗口样式 */
+.info-window-content {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  padding: 5px;
+  max-width: 300px;
+}
+
+.info-window-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #1a73e8;
+}
+
+.info-window-photo {
+  margin-bottom: 10px;
+  width: 100%;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.info-window-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.info-window-address {
+  margin: 5px 0;
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.info-window-coords {
+  margin: 5px 0;
+  font-size: 12px;
+  color: #80868b;
+}
+
+.info-window-button {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  width: 100%;
+}
+
+.info-window-button:hover {
+  background-color: #1765cc;
+}
+
+/* 右侧侧边栏 */
+.sidebar-container {
+  width: 35%;
+  min-width: 320px;
+  max-width: 450px;
+  height: 100%;
+  background-color: #f8f9fa;
+  overflow-y: auto;
+  border-left: 1px solid #e1e4e8;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
+}
+
+/* 音乐生成器样式 */
+.music-generator {
+  padding: 20px;
+}
+
+.music-generator h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #555;
+}
+
+.form-group input[type="file"] {
+  width: 100%;
+  padding: 10px 0;
+}
+
+.coordinates-inputs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.coordinates-inputs input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.coordinates-inputs button,
+.generate-button,
+.download-button {
+  padding: 8px 12px;
+  background-color: #4285f4;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.coordinates-inputs button:hover,
+.generate-button:hover,
+.download-button:hover {
+  background-color: #3367d6;
+}
+
+.coordinates-inputs button:disabled,
+.generate-button:disabled {
+  background-color: #b7b7b7;
+  cursor: not-allowed;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+}
+
+.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.generate-button {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-top: 10px;
+}
+
+.loading-spinner {
+  text-align: center;
+  margin-top: 15px;
+  color: #666;
+}
+
+.error-message {
+  background-color: #ffebee;
+  color: #c62828;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.api-warning {
+  background-color: #fff3e0;
+  color: #e65100;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.image-preview-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.image-preview {
+  width: calc(50% - 5px);
+  height: 100px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.music-result {
+  margin-top: 25px;
+  padding: 15px;
+  background-color: #e3f2fd;
+  border-radius: 8px;
+}
+
+.music-result h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #1565c0;
+}
+
+.audio-player {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.download-button {
+  width: 100%;
+}
+
+.map-tip {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 5px;
+  font-style: italic;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .map-music-container {
+    flex-direction: column;
+  }
+  
+  .map-container {
+    height: 50vh;
+    min-width: 100%;
+  }
+  
+  .sidebar-container {
+    width: 100%;
+    max-width: 100%;
+    height: 50vh;
+  }
+}
