@@ -32,6 +32,7 @@ print("DEBUG_MUSICGEN: (A) import dependencies done.")
 # 设备配置
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device_idx = 0 if device=='cuda' else -1
+print(f"Device set to use {device_idx}") # 打印出实际使用的设备
 
 # 模型初始化
 print("DEBUG_MUSICGEN: (B) model initialization ...")
