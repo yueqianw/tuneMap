@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { generateMusic, checkApiHealth } from '/src/data/musicAPI.js';
 import { reverseGeocode } from '/src/utils/mapUtils.js';
 import './MusicGenerator.css';
+import mapStyles from '/src/utils/mapStyles.js'; 
 
 const MusicGenerator = () => {
   // State management
   const [images, setImages] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
+  const [locationName, setLocationName] = useState('');    
   const [refineDescription, setRefineDescription] = useState(true);
   const [loading, setLoading] = useState(false);
   const [music, setMusic] = useState(null);
@@ -23,7 +25,9 @@ const MusicGenerator = () => {
   const googleMapRef = useRef(null);
   const placesServiceRef = useRef(null);
   const mapClickListenerRef = useRef(null); // 保存地图点击事件监听器的引用
-
+  const autocompleteRef = useRef(null); 
+  const searchInputRef = useRef(null); 
+  const [searchQuery, setSearchQuery] = useState('');
 // src/MusicGenerator.jsx
 
 const placeTypes = [
@@ -72,13 +76,7 @@ const placeTypes = [
     const map = new window.google.maps.Map(googleMapRef.current, {
       center: duomoPosition,
       zoom: 15,
-      styles: [
-        {
-          featureType: "poi",
-          elementType: "labels",
-          stylers: [{ visibility: "off" }]
-        }
-      ]
+      styles: mapStyles
     });
 
     // Create main marker
@@ -98,11 +96,16 @@ const placeTypes = [
     const placesService = new window.google.maps.places.PlacesService(map);
     placesServiceRef.current = placesService;
 
+    initializeAutocomplete(map, marker, infoWindow, placesService);
+
     // 初始加载时更新坐标状态但不显示InfoWindow
     setCoordinates({
       latitude: duomoPosition.lat,
       longitude: duomoPosition.lng
     });
+
+     // PRE-FILL ADDRESS
+    geocodeLatLng(duomoPosition.lat, duomoPosition.lng); 
 
     // 添加地图点击事件监听器（初始默认开启）
     addMapClickListener(map, marker, infoWindow, placesService);
@@ -131,6 +134,95 @@ const placeTypes = [
     setMapLoaded(true);
   };
 
+    // 新增：初始化地址搜索自动完成功能
+  const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
+    if (!searchInputRef.current) return;
+
+    const autocomplete = new window.google.maps.places.Autocomplete(
+      searchInputRef.current,
+      {
+        types: ['geocode', 'establishment'],
+        fields: ['place_id', 'geometry', 'name', 'formatted_address', 'photos', 'types']
+      }
+    );
+
+    // 限制搜索结果在当前地图视野范围内
+    autocomplete.bindTo('bounds', map);
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      
+      if (!place.geometry || !place.geometry.location) {
+        setError('无法找到该地址的位置信息');
+        return;
+      }
+
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      const position = { lat, lng };
+
+      // 更新地图和标记位置
+      map.panTo(position);
+      map.setZoom(15);
+      
+      // 更新坐标状态
+      setCoordinates({
+        latitude: lat,
+        longitude: lng
+      });
+
+      // 更新位置名称
+      setLocationName(place.formatted_address || place.name);
+
+      // 清除搜索框
+      setSearchQuery('');
+
+      if (activeFilters.length === 0) {
+        // 无筛选模式：更新主标记位置并显示信息窗口
+        marker.setPosition(position);
+        marker.setVisible(true);
+        
+        // 使用place详情显示信息窗口
+        showPlaceInfoWindow(lat, lng, marker, map, infoWindow, placesService, place);
+      } else {
+        // 筛选模式：重新搜索该位置附近的筛选地点
+        clearPlaceMarkers();
+        searchFilteredPlacesAroundLocation(position);
+      }
+    });
+
+    autocompleteRef.current = autocomplete;
+  };
+
+    // 新增：处理搜索输入变化
+    const handleSearchInputChange = (e) => {
+      setSearchQuery(e.target.value);
+    };
+  
+    // 新增：清除搜索框
+    const clearSearch = () => {
+      setSearchQuery('');
+      if (searchInputRef.current) {
+        searchInputRef.current.value = '';
+      }
+    };
+  
+  const geocodeLatLng = (lat, lng) => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const components = results[0].address_components;
+        let street = '';
+        let city = '';
+        for (const comp of components) {
+          if (comp.types.includes('route')) street = comp.long_name;
+          if (comp.types.includes('locality')) city = comp.long_name;
+        }
+        setLocationName(street ? `${street}, ${city}` : results[0].formatted_address);
+      }
+    });
+  };
+
   // 添加地图点击事件监听器
   const addMapClickListener = (map, marker, infoWindow, placesService) => {
     // 如果已有监听器，先移除
@@ -149,6 +241,8 @@ const placeTypes = [
         latitude: lat,
         longitude: lng
       });
+
+      geocodeLatLng(lat, lng);      
 
       // 只有在无筛选模式下才显示InfoWindow
       if (activeFilters.length === 0) {
@@ -195,6 +289,8 @@ const placeTypes = [
         location: new window.google.maps.LatLng(lat, lng),
         radius: '50', // 缩小搜索半径获取更精确的结果
       };
+
+  
       
       placesService.nearbySearch(request, (results, status) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results.length > 0) {
@@ -481,6 +577,7 @@ const searchPlacesByType = (placeType) => {
     
     setPlaceMarkers([]);
   };
+  
 
   // Add place photos to music generator
   const addPlaceToMusicGenerator = async () => {
@@ -681,29 +778,18 @@ const searchPlacesByType = (placeType) => {
     }
     
     try {
-      setLoading(true);
-      setError(null);
-      
-      // Call API
-      const musicBlob = await generateMusic(images, coordinates, {
-        refineDescription
-      });
-      
-      // Create audio URL
+      // pack coords + human‑readable address
+      const locationData = {
+        coordinates: { ...coordinates },
+        name: locationName || 'Unknown location'
+      };
+
+      const musicBlob = await generateMusic(images, locationData, { refineDescription });
       const audioUrl = URL.createObjectURL(musicBlob);
-      
-      // Revoke previous audio URL if it exists
-      if (music) {
-        URL.revokeObjectURL(music.url);
-      }
-      
-      setMusic({
-        url: audioUrl,
-        blob: musicBlob
-      });
-      
-    } catch (err) {
-      setError(`Failed to generate music: ${err.message}`);
+      if (music) URL.revokeObjectURL(music.url);
+      setMusic({ url: audioUrl, blob: musicBlob });
+    } catch (e) {
+      setError(`Failed to generate music: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -725,6 +811,29 @@ const searchPlacesByType = (placeType) => {
     <div className="map-music-container">
       {/* Left map area */}
       <div className="map-container">
+        <div className="form-group">
+          <label>Search Location</label>
+          <div className="search-input-container">
+            <input 
+              ref={searchInputRef}  // 连接到ref
+              type="text" 
+              placeholder="Enter address or place name"
+              value={searchQuery}   // 绑定状态
+              onChange={handleSearchInputChange}  // 处理输入变化
+              className="search-input"
+            />
+            {searchQuery && (
+              <button 
+                type="button"
+                className="clear-search-btn"
+                onClick={clearSearch}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
         <div className="map-controls">
           <div className="filter-container">
             {/*<h3>Place Filters</h3>*/}
@@ -795,25 +904,39 @@ const searchPlacesByType = (placeType) => {
           </div>
           
           <div className="form-group">
-            <label>Location Information</label>
+            <strong>Location Information</strong>
+            <div className="location-display">
+              {locationName && (
+                <div className="location-name">
+                  <strong>Current Location:</strong> <br />
+                  {locationName}</div>
+              )}
             <div className="coordinates-inputs">
-              <input 
-                type="number" 
-                placeholder="Latitude" 
-                value={coordinates.latitude} 
-                onChange={(e) => setCoordinates({...coordinates, latitude: e.target.value})} 
-                disabled={loading}
-                step="0.000001"
-              />
-              <input 
-                type="number" 
-                placeholder="Longitude" 
-                value={coordinates.longitude} 
-                onChange={(e) => setCoordinates({...coordinates, longitude: e.target.value})} 
-                disabled={loading}
-                step="0.000001"
-              />
+              {/* Latitude Display */}
+              <div className="coordinate-display">
+                <strong>Latitude:</strong> 
+                {
+                 typeof coordinates.latitude === 'number'
+                   ? coordinates.latitude.toFixed(3) 
+                   : coordinates.latitude !== null && coordinates.latitude !== ''
+                     ? parseFloat(coordinates.latitude).toFixed(3)
+                     : 'N/A' 
+                }
+              </div>
+
+              {/* Longitude Display */}
+              <div className="coordinate-display">
+               <strong>Longitude:</strong> 
+                {
+                  typeof coordinates.longitude === 'number'
+                    ? coordinates.longitude.toFixed(3) 
+                    : coordinates.longitude !== null && coordinates.longitude !== ''
+                      ? parseFloat(coordinates.longitude).toFixed(3)
+                      : 'N/A'
+                }
+              </div>
             </div>
+          </div>
             <p className="map-tip">
               {activeFilters.length === 0 
                 ? "You can click anywhere on the map to select a location." 
