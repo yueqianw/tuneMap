@@ -31,14 +31,14 @@ const MusicGenerator = () => {
 // src/MusicGenerator.jsx
 
 const placeTypes = [
-      { id: 'church', label: 'Churches', icon: '⛪' },
-      { id: 'museum', label: 'Museums', icon: '🏛️' },
-      { id: 'park', label: 'Parks', icon: '🌳' },
-      { id: 'tourist_attraction', label: 'Attractions', icon: '🎭' },
-      { id: 'historical_landmark', label: 'Historical Sites', icon: '🏺' },
-      { id: 'plaza', label: 'Plazas', icon: '⛲' }, 
-      { id: 'restaurant', label: 'Restaurants', icon: '🍽️' }, 
-      { id: 'cafe', label: 'Cafes', icon: '☕' },
+      { id: 'church', label: 'Churches', icon: '⛪' },
+      { id: 'museum', label: 'Museums', icon: '🏛️' },
+      { id: 'park', label: 'Parks', icon: '🌳' },
+      { id: 'tourist_attraction', label: 'Attractions', icon: '🎭' },
+      { id: 'historical_landmark', label: 'Historical Sites', icon: '🏺' },
+      { id: 'plaza', label: 'Plazas', icon: '⛲' }, 
+      { id: 'restaurant', label: 'Restaurants', icon: '🍽️' }, 
+      { id: 'cafe', label: 'Cafes', icon: '☕' },
       { id: 'bar', label: 'Bars', icon: '🍺' },
       { id: 'lodging', label: 'Hotels', icon: '🏨' },
       { id: 'shopping_mall', label: 'Shopping Malls', icon: '🛍️' },
@@ -98,28 +98,21 @@ const placeTypes = [
 
     initializeAutocomplete(map, marker, infoWindow, placesService);
 
-    // 初始加载时更新坐标状态但不显示InfoWindow
+    // 初始加载时设置默认坐标和位置名称
     setCoordinates({
       latitude: duomoPosition.lat,
       longitude: duomoPosition.lng
     });
-
-     // PRE-FILL ADDRESS
-    geocodeLatLng(duomoPosition.lat, duomoPosition.lng); 
+    geocodeLatLng(duomoPosition.lat, duomoPosition.lng);
 
     // 添加地图点击事件监听器（初始默认开启）
     addMapClickListener(map, marker, infoWindow, placesService);
 
-    // Update coordinates on marker drag
+    // Update marker position on drag (不更新坐标状态)
     marker.addListener('dragend', async () => {
       const position = marker.getPosition();
       const lat = position.lat();
       const lng = position.lng();
-      
-      setCoordinates({
-        latitude: lat,
-        longitude: lng
-      });
 
       // 只有在无筛选模式下才显示InfoWindow
       if (activeFilters.length === 0) {
@@ -148,7 +141,7 @@ const placeTypes = [
 
     // 限制搜索结果在当前地图视野范围内
     autocomplete.bindTo('bounds', map);
-
+    
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace();
       
@@ -156,38 +149,33 @@ const placeTypes = [
         setError('无法找到该地址的位置信息');
         return;
       }
-
+    
       const lat = place.geometry.location.lat();
       const lng = place.geometry.location.lng();
       const position = { lat, lng };
-
-      // 更新地图和标记位置
+    
+      // 清空筛选器，统一回到无筛选模式
+      setActiveFilters([]);
+      
+      // 更新地图视野
       map.panTo(position);
       map.setZoom(15);
-      
-      // 更新坐标状态
-      setCoordinates({
-        latitude: lat,
-        longitude: lng
-      });
-
-      // 更新位置名称
-      setLocationName(place.formatted_address || place.name);
-
+    
       // 清除搜索框
       setSearchQuery('');
-
-      if (activeFilters.length === 0) {
-        // 无筛选模式：更新主标记位置并显示信息窗口
-        marker.setPosition(position);
-        marker.setVisible(true);
-        
-        // 使用place详情显示信息窗口
-        showPlaceInfoWindow(lat, lng, marker, map, infoWindow, placesService, place);
-      } else {
-        // 筛选模式：重新搜索该位置附近的筛选地点
-        clearPlaceMarkers();
-        searchFilteredPlacesAroundLocation(position);
+    
+      // 更新主标记位置并显示信息窗口
+      marker.setPosition(position);
+      marker.setVisible(true);
+      
+      // 显示信息窗口
+      try {
+        // 使用 setTimeout 确保状态更新完成后再调用
+        setTimeout(() => {
+          showPlaceInfoWindow(lat, lng, marker, map, infoWindow, placesService, place);
+        }, 100);
+      } catch (error) {
+        console.error('Error showing place info window:', error);
       }
     });
 
@@ -237,12 +225,6 @@ const placeTypes = [
       const lng = event.latLng.lng();
       
       marker.setPosition(event.latLng);
-      setCoordinates({
-        latitude: lat,
-        longitude: lng
-      });
-
-      geocodeLatLng(lat, lng);      
 
       // 只有在无筛选模式下才显示InfoWindow
       if (activeFilters.length === 0) {
@@ -266,8 +248,8 @@ const placeTypes = [
       if (placeDetails) {
         // 如果已经有地点详情，直接使用
         const detailedPlace = {
-          name: placeDetails.name,
-          address: placeDetails.formatted_address || placeDetails.vicinity,
+          name: placeDetails.name || 'Selected Location',
+          address: placeDetails.formatted_address || placeDetails.vicinity || 'Address not available',
           photos: placeDetails.photos ? placeDetails.photos.map(photo => ({
             url: photo.getUrl({ maxWidth: 500, maxHeight: 300 }),
             getUrl: (options) => photo.getUrl(options)
@@ -276,10 +258,20 @@ const placeTypes = [
           position: { lat, lng }
         };
         
+        // 立即更新状态并显示
         setSelectedPlace(detailedPlace);
-        displayInfoWindow(detailedPlace, lat, lng, marker, map, infoWindow);
+        
+        // 使用 Promise 来确保状态更新后再显示信息窗口
+        await new Promise(resolve => {
+          setTimeout(() => {
+            displayInfoWindow(detailedPlace, lat, lng, marker, map, infoWindow);
+            resolve();
+          }, 50);
+        });
+        
         return;
       }
+  
 
       // 先用反向地理编码获取基本地址信息
       const geoResult = await reverseGeocode({ latitude: lat, longitude: lng });
@@ -290,8 +282,6 @@ const placeTypes = [
         radius: '50', // 缩小搜索半径获取更精确的结果
       };
 
-  
-      
       placesService.nearbySearch(request, (results, status) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results.length > 0) {
           // 获取最近地点的详细信息
@@ -374,13 +364,6 @@ const placeTypes = [
     
     displayImageUrl = `https://maps.googleapis.com/maps/api/streetview?size=300x200&location=${lat},${lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}`;
     imageSource = 'street_view';
-    // if (place.photos && place.photos.length > 0) {
-    //   displayImageUrl = place.photos[0].getUrl ? place.photos[0].getUrl({ maxWidth: 300, maxHeight: 200 }) : place.photos[0].url;
-    //   imageSource = 'place_photo';
-    // } else {
-      // 如果没有照片，使用街景静态图像
-
-    //}
     
     // 更新selectedPlace，包含当前显示的图片信息
     setSelectedPlace(prev => ({
@@ -589,11 +572,13 @@ const searchPlacesByType = (placeType) => {
     try {
       setLoading(true);
       
-      // 更新地址信息（以最后一次传入的为准）
+      // 更新坐标和位置信息 - 只有在点击按钮时才更新
       setCoordinates({
         latitude: selectedPlace.position.lat,
         longitude: selectedPlace.position.lng
       });
+      
+      setLocationName(selectedPlace.name + ', ' + selectedPlace.address);
       
       // 获取InfoWindow中当前显示的图片
       const response = await fetch(selectedPlace.displayImageUrl);
@@ -646,40 +631,6 @@ const searchPlacesByType = (placeType) => {
     };
   }, [selectedPlace, previews]);
 
-  // Update map marker when coordinates are updated from sidebar
-  useEffect(() => {
-    if (mapLoaded && coordinates.latitude && coordinates.longitude) {
-      const position = {
-        lat: parseFloat(coordinates.latitude),
-        lng: parseFloat(coordinates.longitude)
-      };
-      
-      // 只有在无筛选模式下才更新主标记位置
-      if (activeFilters.length === 0 && markerRef.current) {
-        markerRef.current.setPosition(position);
-        mapRef.current.panTo(position);
-        
-        // 只有在无筛选模式下才获取和显示位置信息
-        if (infoWindowRef.current && mapRef.current) {
-          const placesService = new window.google.maps.places.PlacesService(mapRef.current);
-          showPlaceInfoWindow(
-            position.lat, 
-            position.lng, 
-            markerRef.current, 
-            mapRef.current, 
-            infoWindowRef.current,
-            placesService
-          );
-        }
-      } else {
-        // 在筛选模式下，只移动地图中心不显示标记
-        if (mapRef.current) {
-          mapRef.current.panTo(position);
-        }
-      }
-    }
-  }, [coordinates, mapLoaded, activeFilters]);
-
   // Handle image upload
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -720,10 +671,7 @@ const searchPlacesByType = (placeType) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
           
-          setCoordinates({
-            latitude: lat,
-            longitude: lng
-          });
+          // 不再自动更新坐标状态，让用户手动点击按钮来更新
           
           // Update map view
           if (mapLoaded) {
