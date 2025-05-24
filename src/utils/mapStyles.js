@@ -32,6 +32,14 @@ const mapStyles = [
           }
       ]
   },
+
+  {
+    featureType: 'landscape',
+    stylers: [
+      { lightness: 20 }
+    ]
+  },
+
   {
       "featureType": "transit",
       "stylers": [
@@ -77,7 +85,7 @@ const mapStyles = [
       "featureType": "water",
       "stylers": [
           {
-              "color": "#84afa3"
+              "color": "#AEE0F4"
           },
           {
               "lightness": 52
@@ -94,12 +102,14 @@ const mapStyles = [
           }
       ]
   },
+
+
   {
       "featureType": "transit.line",
       "elementType": "geometry",
       "stylers": [
           {
-              "color": "#3f518c"
+              "color": "#C5CAE9"
           }
       ]
   }

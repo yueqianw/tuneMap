@@ -11,7 +11,10 @@ const MusicGenerator = () => {
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
   const [locationName, setLocationName] = useState('');    
   const [refineDescription, setRefineDescription] = useState(true);
-  const [loading, setLoading] = useState(false);
+  // 在组件开头添加多个loading状态
+  const [loading, setLoading] = useState(false); // 用于音乐生成
+  const [locationLoading, setLocationLoading] = useState(false); // 用于获取位置
+  const [imageLoading, setImageLoading] = useState(false); // 用于添加图片
   const [music, setMusic] = useState(null);
   const [apiAvailable, setApiAvailable] = useState(false);
   const [error, setError] = useState(null);
@@ -45,6 +48,7 @@ const placeTypes = [
       { id: 'library', label: 'Libraries', icon: '📚' },
   ];
 
+  
 
   // Load Google Maps
   useEffect(() => {
@@ -53,6 +57,13 @@ const placeTypes = [
         initMap();
         return;
       }
+
+    // 检查是否已经有脚本标签在加载
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    if (existingScript) {
+      existingScript.onload = initMap;
+      return;
+    }
 
       const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
       const script = document.createElement('script');
@@ -356,6 +367,35 @@ const placeTypes = [
     });
   };
 
+  const updateInfoWindowButtonState = () => {
+    const button = document.getElementById('add-to-music-btn');
+    if (button) {
+      if (loading || imageLoading) {
+        button.disabled = true;
+        button.classList.add('disabled');
+        button.textContent = loading ? 'Generating Music...' : 'Adding Image...';
+      } else {
+        button.disabled = false;
+        button.classList.remove('disabled');
+        button.textContent = 'Add to Music Generation';
+      }
+    }
+  };
+
+  useEffect(() => {
+    updateInfoWindowButtonState();
+  }, [loading, imageLoading]);
+
+  const handleInfoWindowButtonClick = (e) => {
+    if (e.target && e.target.id === 'add-to-music-btn') {
+      // 检查按钮是否被禁用
+      if (e.target.disabled || loading || imageLoading) {
+        return; // 如果被禁用，直接返回，不执行添加操作
+      }
+      addPlaceToMusicGenerator();
+    }
+  };
+
   // Generate info window content
   const generateInfoWindowContent = (place, lat, lng) => {
     // 确定要在InfoWindow中显示的图片URL，并保存到selectedPlace中
@@ -562,59 +602,77 @@ const searchPlacesByType = (placeType) => {
   };
   
 
-  // Add place photos to music generator
-  const addPlaceToMusicGenerator = async () => {
-    if (!selectedPlace || !selectedPlace.displayImageUrl) {
-      setError('No location or image selected.');
-      return;
-    }
+  useEffect(() => {
+    const initializeApi = async () => {
+      console.log('开始初始化API连接...');
+      
+      // 导入调试函数并测试连接
+      const { checkApiHealth, debugApiConnection } = await import('/src/data/musicAPI');
+      
+      // 运行详细的连接调试
+      await debugApiConnection();
+      
+      // 检查API可用性
+      const available = await checkApiHealth();
+      console.log('API可用性检查结果:', available);
+      setApiAvailable(available);
+    };
     
-    try {
-      setLoading(true);
-      
-      // 更新坐标和位置信息 - 只有在点击按钮时才更新
-      setCoordinates({
-        latitude: selectedPlace.position.lat,
-        longitude: selectedPlace.position.lng
-      });
-      
-      setLocationName(selectedPlace.name + ', ' + selectedPlace.address);
-      
-      // 获取InfoWindow中当前显示的图片
-      const response = await fetch(selectedPlace.displayImageUrl);
-      const blob = await response.blob();
-      
-      // 根据图片来源生成文件名
-      const timestamp = Date.now();
-      const fileName = selectedPlace.imageSource === 'place_photo' 
-        ? `place_${selectedPlace.name.replace(/\s+/g, '_')}_${timestamp}.jpg`
-        : `streetview_${selectedPlace.name.replace(/\s+/g, '_')}_${timestamp}.jpg`;
-      
-      const photoFile = new File([blob], fileName, { type: 'image/jpeg' });
-      
-      // 追加到现有图片中，不删除之前的
-      const updatedImages = [...images, photoFile];
-      setImages(updatedImages);
-      
-      // 创建新预览并追加到现有预览中
-      const newPreview = {
-        file: photoFile,
-        url: URL.createObjectURL(photoFile),
-        id: timestamp // 使用时间戳作为唯一ID
-      };
-      
-      setPreviews(prevPreviews => [...prevPreviews, newPreview]);
-      setLoading(false);
-      
-      // 可选：显示成功消息
-      console.log('Image added successfully:', fileName);
-      
-    } catch (err) {
-      setError('Failed to add image from location.');
-      setLoading(false);
-      console.error('Failed to fetch image:', err);
-    }
-  };
+    initializeApi();
+  }, []);
+
+// 修改 addPlaceToMusicGenerator 函数
+const addPlaceToMusicGenerator = async () => {
+  if (!selectedPlace || !selectedPlace.displayImageUrl) {
+    setError('No location or image selected.');
+    return;
+  }
+  
+  try {
+    setImageLoading(true); // 👈 使用专门的imageLoading状态
+    
+    // 更新坐标和位置信息 - 只有在点击按钮时才更新
+    setCoordinates({
+      latitude: selectedPlace.position.lat,
+      longitude: selectedPlace.position.lng
+    });
+    
+    setLocationName(selectedPlace.name + ', ' + selectedPlace.address);
+    
+    // 获取InfoWindow中当前显示的图片
+    const response = await fetch(selectedPlace.displayImageUrl);
+    const blob = await response.blob();
+    
+    // 根据图片来源生成文件名
+    const timestamp = Date.now();
+    const fileName = selectedPlace.imageSource === 'place_photo' 
+      ? `place_${selectedPlace.name.replace(/\s+/g, '_')}_${timestamp}.jpg`
+      : `streetview_${selectedPlace.name.replace(/\s+/g, '_')}_${timestamp}.jpg`;
+    
+    const photoFile = new File([blob], fileName, { type: 'image/jpeg' });
+    
+    // 追加到现有图片中，不删除之前的
+    const updatedImages = [...images, photoFile];
+    setImages(updatedImages);
+    
+    // 创建新预览并追加到现有预览中
+    const newPreview = {
+      file: photoFile,
+      url: URL.createObjectURL(photoFile),
+      id: timestamp
+    };
+    
+    setPreviews(prevPreviews => [...prevPreviews, newPreview]);
+    setImageLoading(false); // 👈 使用专门的imageLoading状态
+    
+    console.log('Image added successfully:', fileName);
+    
+  } catch (err) {
+    setError('Failed to add image from location.');
+    setImageLoading(false); // 👈 使用专门的imageLoading状态
+    console.error('Failed to fetch image:', err);
+  }
+};
 
   // Listen for info window button click
   useEffect(() => {
@@ -665,7 +723,7 @@ const searchPlacesByType = (placeType) => {
   // Get current location
   const getCurrentLocation = () => {
     if (navigator.geolocation) {
-      setLoading(true);
+      setLocationLoading(true); ;
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const lat = position.coords.latitude;
@@ -700,11 +758,11 @@ const searchPlacesByType = (placeType) => {
             }
           }
           
-          setLoading(false);
+          setLocationLoading(false);
         },
         (error) => {
           setError(`Could not retrieve location: ${error.message}`);
-          setLoading(false);
+          setLocationLoading(false);
         }
       );
     } else {
@@ -721,18 +779,18 @@ const searchPlacesByType = (placeType) => {
     }
     
     if (!coordinates.latitude || !coordinates.longitude) {
-      setError('Please enter location information or select a location on the map.');
+      setError('Please select a location on the map.');
       return;
     }
-    
+
+    setLoading(true); 
+    setError(null); 
+
     try {
       // pack coords + human‑readable address
-      const locationData = {
-        coordinates: { ...coordinates },
-        name: locationName || 'Unknown location'
-      };
-
-      const musicBlob = await generateMusic(images, locationData, { refineDescription });
+      const coordsArray = [coordinates.latitude, coordinates.longitude];
+      console.log(coordsArray);
+      const musicBlob = await generateMusic(images, coordsArray, { refineDescription });
       const audioUrl = URL.createObjectURL(musicBlob);
       if (music) URL.revokeObjectURL(music.url);
       setMusic({ url: audioUrl, blob: musicBlob });
