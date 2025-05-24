@@ -3,6 +3,7 @@ import { generateMusic, checkApiHealth } from '/src/data/musicAPI.js';
 import { reverseGeocode } from '/src/utils/mapUtils.js';
 import './MusicGenerator.css';
 import mapStyles from '/src/utils/mapStyles.js'; 
+import MusicSlideshowModal from './MusicSlideshowModal';
 
 const MusicGenerator = () => {
   // State management
@@ -31,7 +32,7 @@ const MusicGenerator = () => {
   const autocompleteRef = useRef(null); 
   const searchInputRef = useRef(null); 
   const [searchQuery, setSearchQuery] = useState('');
-// src/MusicGenerator.jsx
+  const [showSlideshow, setShowSlideshow] = useState(false);
 
 const placeTypes = [
       { id: 'church', label: 'Churches', icon: '⛪' },
@@ -138,60 +139,137 @@ const placeTypes = [
     setMapLoaded(true);
   };
 
-    // 新增：初始化地址搜索自动完成功能
-  const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
-    if (!searchInputRef.current) return;
+// 在 initializeAutocomplete 函数中，替换地址选择后的处理逻辑
+const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
+  if (!searchInputRef.current) return;
 
-    const autocomplete = new window.google.maps.places.Autocomplete(
-      searchInputRef.current,
-      {
-        types: ['geocode', 'establishment'],
-        fields: ['place_id', 'geometry', 'name', 'formatted_address', 'photos', 'types']
-      }
+  const autocomplete = new window.google.maps.places.Autocomplete(
+    searchInputRef.current,
+    {
+      types: ['geocode', 'establishment'],
+      fields: ['place_id', 'geometry', 'name', 'formatted_address', 'photos', 'types']
+    }
+  );
+
+  // 限制搜索结果在当前地图视野范围内
+  autocomplete.bindTo('bounds', map);
+  
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    
+    if (!place.geometry || !place.geometry.location) {
+      setError('无法找到该地址的位置信息');
+      return;
+    }
+
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+    const position = { lat, lng };
+
+    // 清空筛选器，统一回到无筛选模式
+    setActiveFilters([]);
+
+    // ===== 优化的平滑过渡效果 =====
+    
+    // 1. 先隐藏当前标记，避免突兀的移动
+    marker.setVisible(false);
+    
+    // 2. 计算当前位置和目标位置的距离，决定动画策略
+    const currentCenter = map.getCenter();
+    const currentLat = currentCenter.lat();
+    const currentLng = currentCenter.lng();
+    
+    // 计算距离（简单的欧几里得距离）
+    const distance = Math.sqrt(
+      Math.pow(lat - currentLat, 2) + Math.pow(lng - currentLng, 2)
     );
-
-    // 限制搜索结果在当前地图视野范围内
-    autocomplete.bindTo('bounds', map);
     
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
+    // 根据距离选择不同的动画策略
+    if (distance > 0.1) { // 距离较远，使用更戏剧性的动画
+      // 先放大视野到更高层次
+      map.setZoom(Math.max(map.getZoom() - 3, 2));
       
-      if (!place.geometry || !place.geometry.location) {
-        setError('无法找到该地址的位置信息');
-        return;
-      }
-    
-      const lat = place.geometry.location.lat();
-      const lng = place.geometry.location.lng();
-      const position = { lat, lng };
-    
-      // 清空筛选器，统一回到无筛选模式
-      setActiveFilters([]);
+      setTimeout(() => {
+        // 平移到新位置
+        map.panTo(position);
+        
+        setTimeout(() => {
+          // 逐步缩放到目标层级
+          smoothZoomTo(map, 15, 300);
+          
+          // 延迟显示标记，等动画基本完成
+          setTimeout(() => {
+            marker.setPosition(position);
+            marker.setVisible(true);
+            
+            // 添加标记的弹跳动画
+            marker.setAnimation(window.google.maps.Animation.BOUNCE);
+            setTimeout(() => {
+              marker.setAnimation(null);
+            }, 2000);
+            
+            // 显示信息窗口
+            showPlaceInfoWindow(lat, lng, marker, map, infoWindow, placesService, place);
+          }, 500);
+        }, 800);
+      }, 600);
       
-      // 更新地图视野
+    } else { // 距离较近，使用更简单的平滑动画
+      // 使用 Google Maps 的内置平滑动画
       map.panTo(position);
-      map.setZoom(15);
-    
-      // 清除搜索框
-      setSearchQuery('');
-    
-      // 更新主标记位置并显示信息窗口
-      marker.setPosition(position);
-      marker.setVisible(true);
       
-      // 显示信息窗口
-      try {
-        // 使用 setTimeout 确保状态更新完成后再调用
+      // 平滑缩放到目标层级
+      if (map.getZoom() !== 15) {
+        smoothZoomTo(map, 15, 500);
+      }
+      
+      // 延迟更新标记位置
+      setTimeout(() => {
+        marker.setPosition(position);
+        marker.setVisible(true);
+        
+        // 轻微的弹跳效果
+        marker.setAnimation(window.google.maps.Animation.DROP);
+        
+        // 显示信息窗口
         setTimeout(() => {
           showPlaceInfoWindow(lat, lng, marker, map, infoWindow, placesService, place);
-        }, 100);
-      } catch (error) {
-        console.error('Error showing place info window:', error);
-      }
-    });
+        }, 300);
+      }, 400);
+    }
 
-    autocompleteRef.current = autocomplete;
+    // 清空搜索框
+    setSearchQuery('');
+  });
+
+  autocompleteRef.current = autocomplete;
+};
+
+// 新增：平滑缩放函数
+const smoothZoomTo = (map, targetZoom, duration = 500) => {
+  const currentZoom = map.getZoom();
+  const zoomDiff = targetZoom - currentZoom;
+  const steps = Math.abs(zoomDiff) * 2; // 增加步数让动画更流畅
+  const stepSize = zoomDiff / steps;
+  const stepDuration = duration / steps;
+  
+  let currentStep = 0;
+  
+  const zoomStep = () => {
+    if (currentStep >= steps) {
+      map.setZoom(targetZoom); // 确保最终到达精确的目标缩放级别
+      return;
+    }
+    
+    const newZoom = currentZoom + (stepSize * (currentStep + 1));
+    map.setZoom(newZoom);
+    currentStep++;
+    
+    setTimeout(zoomStep, stepDuration);
   };
+  
+  zoomStep();
+};
 
     // 新增：处理搜索输入变化
     const handleSearchInputChange = (e) => {
@@ -629,7 +707,7 @@ const addPlaceToMusicGenerator = async () => {
   }
   
   try {
-    setImageLoading(true); // 👈 使用专门的imageLoading状态
+    setImageLoading(true); // 使用专门的imageLoading状态
     
     // 更新坐标和位置信息 - 只有在点击按钮时才更新
     setCoordinates({
@@ -663,13 +741,13 @@ const addPlaceToMusicGenerator = async () => {
     };
     
     setPreviews(prevPreviews => [...prevPreviews, newPreview]);
-    setImageLoading(false); // 👈 使用专门的imageLoading状态
+    setImageLoading(false);
     
     console.log('Image added successfully:', fileName);
     
   } catch (err) {
     setError('Failed to add image from location.');
-    setImageLoading(false); // 👈 使用专门的imageLoading状态
+    setImageLoading(false); 
     console.error('Failed to fetch image:', err);
   }
 };
@@ -720,56 +798,6 @@ const addPlaceToMusicGenerator = async () => {
     setPreviews(updatedPreviews);
   };
 
-  // Get current location
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
-      setLocationLoading(true); ;
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          
-          // 不再自动更新坐标状态，让用户手动点击按钮来更新
-          
-          // Update map view
-          if (mapLoaded) {
-            const location = { lat, lng };
-            mapRef.current.panTo(location);
-            mapRef.current.setZoom(15);
-            
-            // 只有在无筛选模式下才更新主标记位置和显示信息窗口
-            if (activeFilters.length === 0) {
-              markerRef.current.setPosition(location);
-              
-              // 获取和显示当前位置的信息
-              const placesService = new window.google.maps.places.PlacesService(mapRef.current);
-              showPlaceInfoWindow(
-                lat, 
-                lng, 
-                markerRef.current, 
-                mapRef.current, 
-                infoWindowRef.current,
-                placesService
-              );
-            } else {
-              // 在筛选模式下，刷新筛选的地点
-              clearPlaceMarkers();
-              searchFilteredPlaces();
-            }
-          }
-          
-          setLocationLoading(false);
-        },
-        (error) => {
-          setError(`Could not retrieve location: ${error.message}`);
-          setLocationLoading(false);
-        }
-      );
-    } else {
-      setError('Your browser does not support geolocation.');
-    }
-  };
-
   // Generate music
   const handleGenerateMusic = async () => {
     // Validate input
@@ -813,6 +841,7 @@ const addPlaceToMusicGenerator = async () => {
     document.body.removeChild(a);
   };
 
+  
   return (
     <div className="map-music-container">
       {/* Left map area */}
@@ -976,16 +1005,32 @@ const addPlaceToMusicGenerator = async () => {
             <div className="music-result">
               <h3>Generated Music</h3>
               <audio controls src={music.url} className="audio-player" />
-              <button onClick={downloadMusic} className="download-button">
-                Download Music
-              </button>
+              <div className="music-buttons">
+                <button 
+                  onClick={() => setShowSlideshow(true)} 
+                  className="slideshow-button"
+                >
+                  🎵 Play with Slideshow
+                </button>
+                <button onClick={downloadMusic} className="download-button">
+        Download Music
+                </button>
+              </div>
             </div>
           )}
+          <MusicSlideshowModal
+            isOpen={showSlideshow}
+            onClose={() => setShowSlideshow(false)}
+            musicUrl={music?.url}
+            images={previews}
+            locationName={locationName}
+          />
         </div>
       </div>
     </div>
   );
 };
+
 
 export default MusicGenerator;
 
