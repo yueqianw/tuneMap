@@ -13,7 +13,7 @@ const MusicSlideshowModal = ({
   const intervalRef = useRef(null);
   
   // 图片轮播间隔（毫秒）
-  const SLIDE_INTERVAL = 3000;
+  const SLIDE_INTERVAL = 2500;
   
   // 开始图片轮播
   const startSlideshow = () => {
