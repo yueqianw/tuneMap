@@ -12,10 +12,9 @@ const MusicGenerator = () => {
   const [coordinates, setCoordinates] = useState({ latitude: '', longitude: '' });
   const [locationName, setLocationName] = useState('');    
   const [refineDescription, setRefineDescription] = useState(true);
-  // 在组件开头添加多个loading状态
-  const [loading, setLoading] = useState(false); // 用于音乐生成
-  const [locationLoading, setLocationLoading] = useState(false); // 用于获取位置
-  const [imageLoading, setImageLoading] = useState(false); // 用于添加图片
+  const [loading, setLoading] = useState(false); // music
+  const [locationLoading, setLocationLoading] = useState(false); // location
+  const [imageLoading, setImageLoading] = useState(false); // image
   const [music, setMusic] = useState(null);
   const [apiAvailable, setApiAvailable] = useState(false);
   const [error, setError] = useState(null);
@@ -25,10 +24,10 @@ const MusicGenerator = () => {
   const [activeFilters, setActiveFilters] = useState([]);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
-  const infoWindowRef = useRef(null); // 统一的InfoWindow
+  const infoWindowRef = useRef(null); // InfoWindow
   const googleMapRef = useRef(null);
   const placesServiceRef = useRef(null);
-  const mapClickListenerRef = useRef(null); // 保存地图点击事件监听器的引用
+  const mapClickListenerRef = useRef(null); 
   const autocompleteRef = useRef(null); 
   const searchInputRef = useRef(null); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +58,7 @@ const placeTypes = [
         return;
       }
 
-    // 检查是否已经有脚本标签在加载
+    // existingScript check
     const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
     if (existingScript) {
       existingScript.onload = initMap;
@@ -82,7 +81,7 @@ const placeTypes = [
   const initMap = () => {
     if (!googleMapRef.current) return;
 
-    // 米兰大教堂 (Milan Duomo)位置
+    // (Milan Duomo) location
     const duomoPosition = { lat: 45.4641, lng: 9.1919 };
 
     const map = new window.google.maps.Map(googleMapRef.current, {
@@ -99,7 +98,7 @@ const placeTypes = [
       animation: window.google.maps.Animation.DROP,
     });
 
-    // Create unified info window (统一的InfoWindow)
+    // Create unified info window 
     const infoWindow = new window.google.maps.InfoWindow({
       maxWidth: 300
     });
@@ -110,17 +109,17 @@ const placeTypes = [
 
     initializeAutocomplete(map, marker, infoWindow, placesService);
 
-    // 初始加载时设置默认坐标和位置名称
+    // initial coordinate
     setCoordinates({
       latitude: duomoPosition.lat,
       longitude: duomoPosition.lng
     });
     geocodeLatLng(duomoPosition.lat, duomoPosition.lng);
 
-    // 添加地图点击事件监听器（初始默认开启）
+    // map listener
     addMapClickListener(map, marker, infoWindow, placesService);
 
-    // Update marker position on drag (不更新坐标状态)
+    // Update marker position on drag 
     marker.addListener('dragend', async () => {
       const position = marker.getPosition();
       const lat = position.lat();
@@ -139,7 +138,7 @@ const placeTypes = [
     setMapLoaded(true);
   };
 
-// 在 initializeAutocomplete 函数中，替换地址选择后的处理逻辑
+// initializeAutocomplete
 const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
   if (!searchInputRef.current) return;
 
@@ -151,14 +150,13 @@ const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
     }
   );
 
-  // 限制搜索结果在当前地图视野范围内
   autocomplete.bindTo('bounds', map);
   
   autocomplete.addListener('place_changed', () => {
     const place = autocomplete.getPlace();
     
     if (!place.geometry || !place.geometry.location) {
-      setError('无法找到该地址的位置信息');
+      setError('Unable to find location information for this address');
       return;
     }
 
@@ -166,27 +164,22 @@ const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
     const lng = place.geometry.location.lng();
     const position = { lat, lng };
 
-    // 清空筛选器，统一回到无筛选模式
+    // clear filter
     setActiveFilters([]);
 
-    // ===== 优化的平滑过渡效果 =====
+    // smooth transimition
     
-    // 1. 先隐藏当前标记，避免突兀的移动
     marker.setVisible(false);
     
-    // 2. 计算当前位置和目标位置的距离，决定动画策略
     const currentCenter = map.getCenter();
     const currentLat = currentCenter.lat();
     const currentLng = currentCenter.lng();
     
-    // 计算距离（简单的欧几里得距离）
     const distance = Math.sqrt(
       Math.pow(lat - currentLat, 2) + Math.pow(lng - currentLng, 2)
     );
     
-    // 根据距离选择不同的动画策略
-    if (distance > 0.1) { // 距离较远，使用更戏剧性的动画
-      // 先放大视野到更高层次
+    if (distance > 0.1) { 
       map.setZoom(Math.max(map.getZoom() - 3, 2));
       
       setTimeout(() => {
@@ -214,11 +207,10 @@ const initializeAutocomplete = (map, marker, infoWindow, placesService) => {
         }, 800);
       }, 600);
       
-    } else { // 距离较近，使用更简单的平滑动画
-      // 使用 Google Maps 的内置平滑动画
+    } else { 
       map.panTo(position);
       
-      // 平滑缩放到目标层级
+
       if (map.getZoom() !== 15) {
         smoothZoomTo(map, 15, 500);
       }
