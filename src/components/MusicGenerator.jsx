@@ -847,12 +847,11 @@ const addPlaceToMusicGenerator = async () => {
       {/* Left map area */}
       <div className="map-container">
         <div className="form-group">
-          <label>Search Location</label>
           <div className="search-input-container">
             <input 
               ref={searchInputRef}  // 连接到ref
               type="text" 
-              placeholder="Enter address or place name"
+              placeholder="Search address or place name"
               value={searchQuery}   // 绑定状态
               onChange={handleSearchInputChange}  // 处理输入变化
               className="search-input"
