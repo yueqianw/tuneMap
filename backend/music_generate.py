@@ -92,8 +92,8 @@ def generate_music(
     output_wav: str,
     style_override: Optional[str]=None,
     refine_description: bool=True,
-    caption_max_tokens: int=30,
-    refine_max_tokens: int=30,
+    caption_max_tokens: int=10,
+    refine_max_tokens: int=10,
     music_max_tokens: int=500
 ) -> str:
     """
