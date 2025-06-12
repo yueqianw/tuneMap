@@ -1121,13 +1121,6 @@ const clearMusicMarkers = () => {
           >
             {loading ? 'Generating...' : 'Generate Music'}
           </button>
-<button 
-  onClick={testMarkersDirectly} 
-  className="test-button"
-  style={{ marginBottom: '10px', backgroundColor: '#ffc107' }}
->
-  Test Markers Sequence
-</button>
           
           {loading && <div className="loading-spinner">Processing, please wait...</div>}
           
