@@ -32,6 +32,8 @@ const MusicGenerator = () => {
   const searchInputRef = useRef(null); 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSlideshow, setShowSlideshow] = useState(false);
+  const [musicMarkers, setMusicMarkers] = useState([]); // 音乐播放时的专用标记
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
 
 const placeTypes = [
       { id: 'church', label: 'Churches', icon: '⛪' },
@@ -276,24 +278,33 @@ const smoothZoomTo = (map, targetZoom, duration = 500) => {
       }
     };
   
-  const geocodeLatLng = (lat, lng) => {
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results[0]) {
-        const components = results[0].address_components;
-        let street = '';
-        let city = '';
-        for (const comp of components) {
-          if (comp.types.includes('route')) street = comp.long_name;
-          if (comp.types.includes('locality')) city = comp.long_name;
+    const geocodeLatLng = (lat, lng) => {
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          const components = results[0].address_components;
+          let city = '';
+          let country = '';
+          
+          for (const comp of components) {
+            if (comp.types.includes('locality')) city = comp.long_name;
+            if (comp.types.includes('country')) country = comp.long_name;
+          }
+          
+          // 只设置城市+国家
+          setLocationName(city && country ? `${city}, ${country}` : results[0].formatted_address);
         }
-        setLocationName(street ? `${street}, ${city}` : results[0].formatted_address);
-      }
-    });
-  };
+      });
+    };
 
   // 添加地图点击事件监听器
   const addMapClickListener = (map, marker, infoWindow, placesService) => {
+
+  // 添加这个检查
+  if (!map || !marker || !infoWindow || !placesService) {
+    return;
+  }
+
     // 如果已有监听器，先移除
     if (mapClickListenerRef.current) {
       window.google.maps.event.removeListener(mapClickListenerRef.current);
@@ -455,16 +466,6 @@ const smoothZoomTo = (map, targetZoom, duration = 500) => {
   useEffect(() => {
     updateInfoWindowButtonState();
   }, [loading, imageLoading]);
-
-  const handleInfoWindowButtonClick = (e) => {
-    if (e.target && e.target.id === 'add-to-music-btn') {
-      // 检查按钮是否被禁用
-      if (e.target.disabled || loading || imageLoading) {
-        return; // 如果被禁用，直接返回，不执行添加操作
-      }
-      addPlaceToMusicGenerator();
-    }
-  };
 
   // Generate info window content
   const generateInfoWindowContent = (place, lat, lng) => {
@@ -707,7 +708,28 @@ const addPlaceToMusicGenerator = async () => {
       longitude: selectedPlace.position.lng
     });
     
-    setLocationName(selectedPlace.name + ', ' + selectedPlace.address);
+    // 从坐标获取城市+国家信息
+    try {
+      const geoResult = await reverseGeocode({ 
+        latitude: selectedPlace.position.lat, 
+        longitude: selectedPlace.position.lng 
+      });
+  
+    // 解析地址组件获取城市和国家
+    const addressParts = geoResult.address.split(',');
+    let city = '', country = '';
+  
+    // 简单解析：通常最后一个是国家，倒数第二个可能是城市/地区
+    if (addressParts.length >= 2) {
+      country = addressParts[addressParts.length - 1].trim();
+      city = addressParts[addressParts.length - 2].trim();
+    }
+  
+    setLocationName(city && country ? `${city}, ${country}` : selectedPlace.name);
+    } catch (error) {
+      // 如果获取失败，使用原有逻辑
+      setLocationName(selectedPlace.name);
+    }
     
     // 获取InfoWindow中当前显示的图片
     const response = await fetch(selectedPlace.displayImageUrl);
@@ -729,7 +751,13 @@ const addPlaceToMusicGenerator = async () => {
     const newPreview = {
       file: photoFile,
       url: URL.createObjectURL(photoFile),
-      id: timestamp
+      id: timestamp,
+      location: {  // 新增
+        lat: selectedPlace.position.lat,
+        lng: selectedPlace.position.lng,
+        name: selectedPlace.name,
+        address: selectedPlace.address
+      }
     };
     
     setPreviews(prevPreviews => [...prevPreviews, newPreview]);
@@ -771,7 +799,8 @@ const addPlaceToMusicGenerator = async () => {
     const newPreviews = files.map(file => ({
       file,
       url: URL.createObjectURL(file),
-      id: Date.now() + Math.random() // 添加唯一ID用于删除
+      id: Date.now() + Math.random(),
+      location: null  // 手动上传的图片没有位置信息
     }));
     
     setPreviews(prevPreviews => [...prevPreviews, ...newPreviews]);
@@ -833,6 +862,109 @@ const addPlaceToMusicGenerator = async () => {
     document.body.removeChild(a);
   };
 
+  const handleMusicPlay = () => {
+    setIsMusicPlaying(true);
+    clearAllMarkersAndFilters();
+    showImageMarkersSequentially();
+  };
+  
+  const handleMusicPause = () => {
+    setIsMusicPlaying(false);
+  };
+  
+  const handleMusicEnd = () => {
+    setIsMusicPlaying(false);
+    clearMusicMarkers();
+  };
+  
+  const clearAllMarkersAndFilters = () => {
+    // 清除筛选
+    setActiveFilters([]);
+    // 清除筛选标记
+    clearPlaceMarkers();
+    // 隐藏主标记
+    if (markerRef.current) {
+      markerRef.current.setVisible(false);
+    }
+    // 关闭信息窗口
+    if (infoWindowRef.current) {
+      infoWindowRef.current.close();
+    }
+  };
+  
+const showImageMarkersSequentially = () => {
+  const imagesWithLocation = previews.filter(preview => preview.location);
+  if (imagesWithLocation.length === 0) return;
+  
+  // 计算所有位置的边界，调整地图视野包含所有标记
+  const bounds = new window.google.maps.LatLngBounds();
+  imagesWithLocation.forEach(preview => {
+    bounds.extend({ lat: preview.location.lat, lng: preview.location.lng });
+  });
+  mapRef.current.fitBounds(bounds);
+  
+  // 获取音频时长并计算间隔
+  const audioElement = document.querySelector('.audio-player');
+  const audioDuration = audioElement ? audioElement.duration : 10; // 默认10秒
+  const interval = audioDuration / imagesWithLocation.length * 1000; // 转换为毫秒
+  
+  imagesWithLocation.forEach((preview, index) => {
+    setTimeout(() => {
+      const marker = new window.google.maps.Marker({
+        position: { lat: preview.location.lat, lng: preview.location.lng },
+        map: mapRef.current,
+        title: `Image ${index + 1}: ${preview.location.name}`,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="15" fill="#FF6B6B" stroke="#fff" stroke-width="2"/>
+              <text x="16" y="20" font-size="14" text-anchor="middle" fill="white" font-weight="bold">
+                ${index + 1}
+              </text>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(32, 32),
+          anchor: new window.google.maps.Point(16, 16)
+        },
+        animation: window.google.maps.Animation.DROP
+      });
+      
+      setMusicMarkers(prev => [...prev, marker]);
+    }, index * interval);
+  });
+};
+  
+const clearMusicMarkers = () => {
+  // 清除所有音乐播放标记
+  musicMarkers.forEach(marker => {
+    if (marker && marker.setMap) {
+      marker.setMap(null);
+    }
+  });
+  setMusicMarkers([]);
+  
+  // 重新显示主标记
+  if (markerRef.current) {
+    markerRef.current.setVisible(true);
+  }
+  
+  // 重新添加地图点击监听器
+  if (activeFilters.length === 0) {
+    addMapClickListener(mapRef.current, markerRef.current, infoWindowRef.current, placesServiceRef.current);
+  }
+};
+
+  // 组件卸载时清理音乐标记
+  useEffect(() => {
+    return () => {
+     clearMusicMarkers();
+    };
+  }, [music]); // 当音乐重新生成时清理旧标记
+
+  const testMarkersDirectly = () => {
+    console.log('Testing marker sequence...');
+    handleMusicPlay(); // 直接调用你的新函数
+  };
   
   return (
     <div className="map-music-container">
@@ -989,13 +1121,28 @@ const addPlaceToMusicGenerator = async () => {
           >
             {loading ? 'Generating...' : 'Generate Music'}
           </button>
+<button 
+  onClick={testMarkersDirectly} 
+  className="test-button"
+  style={{ marginBottom: '10px', backgroundColor: '#ffc107' }}
+>
+  Test Markers Sequence
+</button>
           
           {loading && <div className="loading-spinner">Processing, please wait...</div>}
           
           {music && !loading && (
             <div className="music-result">
               <h3>Generated Music</h3>
-              <audio controls src={music.url} className="audio-player" />
+
+            <audio 
+              controls 
+              src={music.url} 
+              className="audio-player"
+              onPlay={handleMusicPlay}  // 新增
+              onPause={handleMusicPause}  // 新增
+              onEnded={handleMusicEnd}  // 新增
+            />
               <div className="music-buttons">
                 <button 
                   onClick={() => setShowSlideshow(true)} 
