@@ -13,144 +13,209 @@ Original file is located at
 #   pip install transformers soundfile pillow geopy git+https://github.com/facebookresearch/encodec.git
 #   pip install geopy
 # ---------------------------------------------------------
-import os
-import torch
-import numpy as np
-import torchaudio
-import soundfile as sf
+# =====================  Imports  =========================
+import os, warnings, importlib, re, numpy as np
+from typing import List, Tuple
+
+# -- optional wikipedia
+try:
+    import wikipedia
+except ModuleNotFoundError:
+    wikipedia = None
+
+import torch, torchaudio, soundfile as sf
 from PIL import Image
 from geopy.geocoders import Nominatim
 from transformers import (
+    BitsAndBytesConfig, AutoTokenizer, AutoModelForSeq2SeqLM,
     BlipProcessor, BlipForConditionalGeneration,
     CLIPProcessor, CLIPModel,
     pipeline as hf_pipeline
 )
-from typing import List, Optional, Tuple
 
-print("DEBUG_MUSICGEN: (A) import dependencies done.")
+# =====================  Global config  ===================
+device = "cuda" if torch.cuda.is_available() else "cpu"
+QUANTIZE_8BIT_DEFAULT = True
+USE_FAST_TOKENIZER = False
 
-# 设备配置
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-device_idx = 0 if device=='cuda' else -1
-print(f"Device set to use {device_idx}") # 打印出实际使用的设备
+# =====================  Loader (auto-fallback) ============
+def _load_model(name: str, enable_8bit=QUANTIZE_8BIT_DEFAULT):
+    tok = AutoTokenizer.from_pretrained(name, use_fast=USE_FAST_TOKENIZER)
+    qc = None
+    if enable_8bit and device == "cuda":
+        try:
+            importlib.import_module("bitsandbytes")
+            importlib.import_module("triton.ops")
+            qc = BitsAndBytesConfig(load_in_8bit=True)
+        except ModuleNotFoundError as e:
+            warnings.warn(f"[量化回退] {e} → 全精度加载", RuntimeWarning)
 
-# 模型初始化
-print("DEBUG_MUSICGEN: (B) model initialization ...")
-_blip_processor = BlipProcessor.from_pretrained('Salesforce/blip-image-captioning-base')
-_blip_model = BlipForConditionalGeneration.from_pretrained(
-    'Salesforce/blip-image-captioning-base'
-).to(device)
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        name,
+        quantization_config=qc,
+        device_map="auto" if qc else None,
+        torch_dtype=torch.float16 if qc else None
+    ).eval()
+    return model, tok
 
-print("DEBUG_MUSICGEN: (C) _blip_processor _blip_model done.")
-_clip_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-_clip_model = CLIPModel.from_pretrained('openai/clip-vit-base-patch32').to(device)
+# =====================  Model init  ======================
+blip_proc  = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+blip_model = BlipForConditionalGeneration.from_pretrained(
+    "Salesforce/blip-image-captioning-base",
+    torch_dtype=torch.float16 if device == "cuda" else None
+).to(device).eval()
 
-print("DEBUG_MUSICGEN: (D) _clip_processor _clip_model done.")
-_refiner = hf_pipeline('text2text-generation', model='google/flan-t5-small', device=device_idx)
+clip_proc  = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model = CLIPModel.from_pretrained(
+    "openai/clip-vit-base-patch32",
+    torch_dtype=torch.float16 if device == "cuda" else None
+).to(device).eval()
 
-print("DEBUG_MUSICGEN: (E) _refiner done.")
-_music_pipe = hf_pipeline('text-to-audio', model='facebook/musicgen-small', device=device_idx)
+STYLE_CANDS = ["ambient","minimalist","uplifting","epic","joyful",
+               "melancholic","nostalgic","dramatic","electronic","folk"]
 
-print("DEBUG_MUSICGEN: (F) _music_pipe done.")
-_geolocator = Nominatim(user_agent='image2music_module')
+_refiner,_ref_tok = _load_model("google/flan-t5-small")
+refiner_pipe = hf_pipeline("text2text-generation", model=_refiner,
+                           tokenizer=_ref_tok, device=0 if device=="cuda" else -1)
 
-print("DEBUG_MUSICGEN: (D) _geolocator done.")
-_STYLE_MAP = {
-    'joyful':    {'tempo':130,'instrument':'bright guitar and piano','dynamics':'lively','rhythm':'upbeat syncopation'},
-    'melancholic':{'tempo':55,'instrument':'solo cello and pads','dynamics':'soft','rhythm':'slow flowing patterns'},
-    'epic':      {'tempo':95,'instrument':'brass and timpani','dynamics':'powerful','rhythm':'strong pulse'},
-    'electronic':{'tempo':128,'instrument':'synth bass and drums','dynamics':'energetic','rhythm':'steady four-on-the-floor'},
-    'serene':    {'tempo':70,'instrument':'harp and chimes','dynamics':'gentle','rhythm':'spacious patterns'},
-    'mysterious':{'tempo':65,'instrument':'strings and pads','dynamics':'subdued','rhythm':'irregular motifs'},
-    'nostalgic': {'tempo':60,'instrument':'vintage piano and strings','dynamics':'warm','rhythm':'gentle groove'},
-    'dramatic':  {'tempo':100,'instrument':'strings and horns','dynamics':'intense','rhythm':'accented rhythms'},
-    'romantic':  {'tempo':85,'instrument':'strings and violin','dynamics':'expressive','rhythm':'waltz-like patterns'},
-    'dark':      {'tempo':50,'instrument':'synths and bass','dynamics':'brooding','rhythm':'off-beat pulse'},
-    'uplifting': {'tempo':120,'instrument':'brass and choirs','dynamics':'bright','rhythm':'energetic pulse'},
-    'ambient':   {'tempo':60,'instrument':'pads and drones','dynamics':'ethereal','rhythm':'arrhythmic textures'}
+music_pipe = hf_pipeline("text-to-audio", model="facebook/musicgen-small",
+                         device=0 if device=="cuda" else -1)
+
+geolocator = Nominatim(user_agent="image2music_module")
+
+# =====================  Smart scale detect  ==============
+KEYWORDS = {
+    r"\bmaqam\b":"Arabic maqam", r"\bmakam\b":"Turkish makam",
+    r"\bdastgah\b":"Persian dastgah", r"\braga\b":"Hindustani raga",
+    r"\bpelog\b":"Gamelan pelog", r"\bslendro\b":"Gamelan slendro",
+    r"\bpentatonic\b":"pentatonic scale", r"\bphrygian\b":"phrygian mode",
+    r"\bmixolydian\b":"mixolydian mode", r"\bdorian\b":"dorian mode",
 }
 
-print("DEBUG_MUSICGEN: (E) _STYLE_MAP done.")
-# 工具函数
-def _ensure_stereo_44k(wave: torch.Tensor, sr: int, target_sr: int=44100) -> Tuple[torch.Tensor,int]:
-    if wave.ndim==1:
-        wave=wave.unsqueeze(0)
-    elif wave.shape[0]>wave.shape[-1]:
-        wave=wave.T.contiguous()
-    if wave.shape[0]==1:
-        wave=wave.repeat(2,1)
-    if sr!=target_sr:
-        wave=torchaudio.functional.resample(wave, sr, target_sr)
-        sr=target_sr
-    return torch.clamp(wave, -1.0, 1.0), sr
+def smart_traditional_mode(country:str)->str|None:
+    if not country: return None
+    # ① Wikipedia
+    if wikipedia is not None:
+        try:
+            for title in (f"Music of {country}",f"Traditional music of {country}"):
+                page = wikipedia.page(title, auto_suggest=False)
+                text = page.summary.lower()
+                for pat,desc in KEYWORDS.items():
+                    if re.search(pat,text):
+                        print(f"[Smart-Mode] Wiki 捕获 «{desc}»")
+                        return desc
+        except Exception:
+            pass
+    else:
+        print("[Smart-Mode] wikipedia 模块缺失，跳过 Wiki 查询")
 
-print("DEBUG_MUSICGEN: (F) _ensure_stereo_44k done.")
-# 核心函数
+    # ② LLM
+    try:
+        q=f"Name one traditional musical scale or mode used in the folk music of {country}. Answer with a short phrase only."
+        ans=refiner_pipe(q,max_length=20)[0]["generated_text"].strip()
+        if 3<=len(ans)<=40:
+            print(f"[Smart-Mode] LLM 建议 «{ans}»")
+            return ans
+    except Exception:
+        pass
+    return None
+
+# =====================  Visual cues  =====================
+def visual_cues(img:Image.Image)->dict:
+    hsv=img.convert("HSV")
+    h,s,v=[np.array(c).astype(np.float32)/255. for c in hsv.split()]
+    warm=(h.mean()<.25) or (h.mean()>.85)
+    key_mode="major" if warm else "minor"
+    light=v.mean()
+    dynamic="very bright"if light>.75 else"bright"if light>.55 else"balanced"if light>.35 else"soft"
+    ed=np.hypot(*np.gradient(np.array(img.convert("L"),dtype=np.float32)/255.)).mean()
+    tempo="fast"if ed>.12 else"moderate"if ed>.07 else"slow"
+    return dict(key_mode=key_mode,dynamic=dynamic,tempo=tempo)
+
+# =====================  Audio helper  ====================
+def stereo_44k(audio:torch.Tensor,sr:int):
+    if audio.ndim==1: audio=audio.unsqueeze(0)
+    if audio.shape[0]==1: audio=audio.repeat(2,1)
+    if sr!=44100: audio=torchaudio.functional.resample(audio,sr,44100); sr=44100
+    return torch.clamp(audio,-1,1),sr
+
+# =====================  Main =============================
 def generate_music(
-    image_paths: List[str],
-    coords: Tuple[float,float],
-    output_wav: str,
-    style_override: Optional[str]=None,
-    refine_description: bool=True,
-    caption_max_tokens: int=10,
-    refine_max_tokens: int=10,
-    music_max_tokens: int=500
-) -> str:
-    """
-    根据多张图片与地理坐标生成音乐。
+    image_paths:List[str],
+    coords:Tuple[float,float],
+    output_wav:str,
+    style_hint:str="",
+    refine_description:bool=False,
+    duration_sec:int=30
+)->str:
 
-    参数:
-      image_paths: 图片文件路径列表
-      coords: (lat, lon)
-      output_wav: 输出 WAV 文件路径
-      style_override: 可选，指定一个风格标签
-      refine_description: 是否精炼场景描述
-    返回:
-      output_wav 路径
-    """
-    lat, lon = coords
-    loc = _geolocator.reverse((lat, lon), language='en')
-    location_str = loc.address if loc else f'Lat {lat}, Lon {lon}'
+    if not image_paths: raise ValueError("image_paths 不能为空")
+    for p in image_paths:
+        if not os.path.isfile(p): raise FileNotFoundError(p)
 
-    descriptions, styles = [], []
-    for path in image_paths:
-        img = Image.open(path).convert('RGB')
-        inputs = _blip_processor(images=img, return_tensors='pt').to(device)
-        out = _blip_model.generate(**inputs, max_new_tokens=caption_max_tokens)
-        base = _blip_processor.decode(out[0], skip_special_tokens=True)
+    # 地理
+    lat,lon=coords
+    loc=geolocator.reverse((lat,lon),language="en")
+    addr=loc.raw["address"] if loc and"address"in loc.raw else {}
+    country=addr.get("country","")
+    region_label=", ".join(dict.fromkeys([addr.get(k,"") for k in("city","state","country")])).strip(", ") \
+                 or f"Lat {lat:.2f}, Lon {lon:.2f}"
+
+    # 图像描述 & cues
+    imgs,descs,cues=[],[],[]
+    for p in image_paths:
+        img=Image.open(p).convert("RGB").resize((224,224))
+        imgs.append(img); cues.append(visual_cues(img))
+
+    with torch.no_grad():
+        outs=blip_model.generate(**blip_proc(images=imgs,return_tensors="pt").to(device),
+                                 max_new_tokens=30)
+
+    for i,img in enumerate(imgs):
+        cap=blip_proc.decode(outs[i],skip_special_tokens=True)
         if refine_description:
-            prompt = f"Expand this caption into a vivid scene description: {base}"
-            res = _refiner(prompt, max_length=refine_max_tokens, do_sample=False)[0]['generated_text']
-            if ':' in res:
-                res = res.split(':',1)[-1].strip()
-            descriptions.append(res)
-        else:
-            descriptions.append(base)
-        if style_override in _STYLE_MAP:
-            styles.append(style_override)
-        else:
-            clip_in = _clip_processor(images=img, text=list(_STYLE_MAP.keys()), return_tensors='pt', padding=True).to(device)
-            clip_out = _clip_model(**clip_in)
-            idx = int(torch.argmax(clip_out.logits_per_image[0]))
-            styles.append(list(_STYLE_MAP.keys())[idx])
+            cap=refiner_pipe(f"Expand: {cap}",max_length=60)[0]["generated_text"].split(":",1)[-1].strip()
+        descs.append(cap.rstrip(".")+".")
 
-    main_style = style_override if style_override in _STYLE_MAP else max(set(styles), key=styles.count)
-    raw_desc = ' '.join([d.rstrip('.') + '.' for d in descriptions])
-    details = _STYLE_MAP.get(main_style, {'tempo':80,'instrument':'piano','dynamics':'moderate','rhythm':'steady'})
+    key_mode=max(set(c["key_mode"] for c in cues),key=[c["key_mode"]for c in cues].count)
+    dynamic=max(set(c["dynamic"]for c in cues),key=[c["dynamic"]for c in cues].count)
+    tempo  =max(set(c["tempo"]  for c in cues),key=[c["tempo"]  for c in cues].count)
 
-    prompt = (
-        f"Walking through {location_str} in a {main_style} mood, I see: {raw_desc} "
-        f"Compose a piece at {details['tempo']} BPM, featuring {details['instrument']}, "
-        f"with {details['dynamics']} dynamics and {details['rhythm']}, dynamic crescendos, and ambient harmonies."
-    )
-    result = _music_pipe(prompt, forward_params={'max_new_tokens': music_max_tokens})
-    if isinstance(result, list): result = result[0]
-    wave, sr = result['audio'], result['sampling_rate']
-    wave = torch.from_numpy(wave) if isinstance(wave, np.ndarray) else torch.tensor(wave)
-    if wave.ndim==3: wave=wave[0]
-    wave, sr = _ensure_stereo_44k(wave, sr)
-    os.makedirs(os.path.dirname(output_wav) or '.', exist_ok=True)
-    sf.write(output_wav, wave.cpu().numpy().T, sr, subtype='PCM_16')
+    trad_mode=smart_traditional_mode(country)
+    mode_phrase=f"in the traditional {trad_mode} mode" if trad_mode else f"in a {key_mode} tonality"
+
+    # 风格
+    style=style_hint.strip()
+    if not style:
+        with torch.no_grad():
+            score=torch.zeros(len(STYLE_CANDS),device=device)
+            for img in imgs:
+                inp=clip_proc(images=img,text=STYLE_CANDS,return_tensors="pt",padding=True).to(device)
+                score+=clip_model(**inp).logits_per_image[0]
+            style=STYLE_CANDS[int(score.argmax())]
+        print(f"[Auto-Style] {style}")
+
+    # Prompt
+    prompt=(f"You are composing {style} music inspired by the locale of {region_label}. "
+            f"The piece should be {mode_phrase}, feature {dynamic} dynamics, and keep a {tempo} tempo. "
+            f"It must use traditional instruments commonly found in this region. "
+            f"Visual inspiration: {' '.join(descs)} "
+            f"Please produce a coherent, high-quality musical piece about {duration_sec} seconds long.")
+
+    print("\n=== MUSICGEN PROMPT ===\n",prompt,"\n=======================\n")
+
+    # MusicGen
+    tokens=duration_sec*50
+    with torch.no_grad():
+        out=music_pipe(prompt,forward_params={"max_new_tokens":tokens})
+    res=out[0] if isinstance(out,list) else out
+    audio,sr=res["audio"],res["sampling_rate"]
+    audio=torch.tensor(audio) if not isinstance(audio,torch.Tensor) else audio
+    if audio.ndim==3: audio=audio[0]
+    audio,sr=stereo_44k(audio,sr)
+    os.makedirs(os.path.dirname(output_wav)or".",exist_ok=True)
+    sf.write(output_wav,audio.cpu().numpy().T,sr,subtype="PCM_16")
+    print(f"[✓] 生成：{output_wav}")
     return output_wav
 
 # 调用示例

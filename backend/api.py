@@ -56,9 +56,15 @@ def api_generate_music():
         except (TypeError, ValueError):
             return jsonify({'error': 'Invalid coordinate format'}), 400
 
-        # 可选参数
+        # 可选参数：风格、是否精炼描述
         style_override = request.form.get('style')
         refine_description = request.form.get('refine_description', 'true').lower() == 'true'
+
+        # 可选参数：生成时长（秒）
+        try:
+            duration_sec = int(request.form.get('duration_sec', 30))
+        except ValueError:
+            return jsonify({'error': 'Invalid duration_sec'}), 400
 
         # 保存上传的图片
         images = request.files.getlist('images')
@@ -75,13 +81,14 @@ def api_generate_music():
         # 生成输出文件路径
         output_file = os.path.join(temp_dir, 'generated_music.wav')
 
-        # 调用核心生成函数
+        # 调用核心生成函数，传入 duration_sec
         result_path = generate_music(
             image_paths=image_paths,
             coords=(lat, lon),
             output_wav=output_file,
             style_override=style_override,
-            refine_description=refine_description
+            refine_description=refine_description,
+            duration_sec=duration_sec
         )
 
         # 返回音频
