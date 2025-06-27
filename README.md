@@ -79,12 +79,11 @@ The backend is deployed on Google Cloud Run.
 
 **cUrl example**
 ```bash
-curl -X POST <BASE_URL>/api/generate-music \
-     -F "images=@/path/img1.jpg" \
-     -F "images=@/path/img2.jpg" \
-     -F "latitude=41.9028" \
-     -F "longitude=12.4964" \
-     -F "duration_sec=45" \
-     --output music.wav
-
+& curl.exe -v -X POST "https://music-api-979997461127.us-central1.run.app/api/generate-music" `
+   -F "images=@/path/img1.jpg" `
+   -F "images=@/path/img2.jpg" `
+   -F "latitude=39.9" `
+   -F "longitude=116.4" `
+   -F "refine_description=false" `
+   --output generated_music.wav
 
