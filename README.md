@@ -1,4 +1,4 @@
-# Image-to-Music API
+# Image-to-Music Backend
 
 A REST service that converts one or more **geo-tagged images** into a short piece of location-aware music.
 
@@ -61,3 +61,30 @@ A REST service that converts one or more **geo-tagged images** into a short piec
 7. **Post-processing and response**  
    * Output is resampled to **44.1 kHz stereo** (if needed) and saved as a temporary WAV.  
    * Flask streams the file back as the response body (`audio/wav`, attachment `generated_music.wav`).
+
+## Using the Cloud API
+
+The backend is deployed on Google Cloud Run.
+
+### `POST https://music-api-979997461127.us-central1.run.app/api/generate-music`
+
+| Field (multipart)      | Type    | Required | Description                                                     |
+|------------------------|---------|----------|-----------------------------------------------------------------|
+| `images`               | file[]  | yes      | One or more `.jpg` / `.png` files                               |
+| `latitude`             | float   | yes      | Decimal degrees                                                 |
+| `longitude`            | float   | yes      | Decimal degrees                                                 |
+| `style`                | string  | no       | Override auto-style (`ambient`, `folk`, `epic`, …)              |
+| `refine_description`   | bool    | no       | `true` *(default)* expands BLIP captions with Flan-T5           |
+| `duration_sec`         | int     | no       | Output length in seconds (default `30`)                         |
+
+**cUrl example**
+```bash
+curl -X POST <BASE_URL>/api/generate-music \
+     -F "images=@/path/img1.jpg" \
+     -F "images=@/path/img2.jpg" \
+     -F "latitude=41.9028" \
+     -F "longitude=12.4964" \
+     -F "duration_sec=45" \
+     --output music.wav
+
+
