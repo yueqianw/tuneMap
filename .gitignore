@@ -1,4 +1,4 @@
-# Node.js related files and folders
+# related files and folders
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -33,3 +33,15 @@ Desktop.ini  # Windows specific
 
 # 忽略所有上传的临时文件
 temp_uploads/
+uploads/
+
+# Python
+# 忽略 Python 虚拟环境
+.venv/
+venv/
+
+# 忽略 Python 缓存文件
+__pycache__/
+
+# 忽略 Flask 实例文件夹
+instance/

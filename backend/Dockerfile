@@ -1,30 +1,32 @@
 # Dockerfile
+FROM python:3.9-slim
 
-# 1. »ùÓÚ¹Ù·½ Python 3.10 ¾«¼ò¾µÏñ
-FROM python:3.10-slim
-
-# 2. °²×°ÏµÍ³ÒÀÀµ
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      build-essential \
-      ffmpeg \
-      libsndfile1 \
-      git && \
-    rm -rf /var/lib/apt/lists/*
-
-# 3. ÉèÖÃ¹¤×÷Ä¿Â¼
 WORKDIR /app
 
-# 4. ¸´ÖÆ²¢°²×° Python ÒÀÀµ
+# å®‰è£…ç³»ç»Ÿä¾èµ–
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# å¤åˆ¶ä¾èµ–æ–‡ä»¶
 COPY requirements.txt .
+
+# å®‰è£…Pythonä¾èµ–
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. ¸´ÖÆÓ¦ÓÃ´úÂë
-COPY api.py music_generate.py ./
+# å¤åˆ¶åº”ç”¨ä»£ç 
+COPY . .
 
-# 6. »·¾³±äÁ¿ & ±©Â¶¶Ë¿Ú
-ENV PORT=8080
-EXPOSE 8080
+# åˆ›å»ºå¿…è¦çš„ç›®å½•
+RUN mkdir -p uploads logs
 
-# 7. Æô¶¯ÃüÁî£ºÔ¤¼ÓÔØÄ£ĞÍ£¬1 ¸ö worker + 4 Ïß³Ì
-CMD ["gunicorn","-b","0.0.0.0:8080","api:app","--preload","--workers","1","--threads","4"]
+# è®¾ç½®æƒé™
+RUN chmod +x setup_database.py
+
+# æš´éœ²ç«¯å£
+EXPOSE 5000
+
+# å¯åŠ¨å‘½ä»¤
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "app:app"]
+
