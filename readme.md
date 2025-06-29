@@ -2,8 +2,6 @@
 
 <div align="center">
 
-![TuneScape Logo](https://img.shields.io/badge/TuneScape-AI%20Music%20Generation-blue?style=for-the-badge&logo=music)
-
 *Transform locations into melodies with AI-powered music generation*
 
 [![React](https://img.shields.io/badge/React-18.2.0-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
@@ -42,13 +40,13 @@ TuneScape is an web application that generates music compositions based on locat
 - **Task Management**: Asynchronous background processing
 
 ### AI Integration
-- **Image Analysis**: Google Gemini 1.5 Flash Vision API
+- **Image Analysis**: Google Gemini 1.5 API
 - **Music Generation**: Suno AI API for location-inspired compositions
 - **Cultural Context**: Location-aware music style recommendations
 
 
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 16+ and npm
@@ -123,7 +121,7 @@ npm run dev
 ```
 
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 tuneMap/
