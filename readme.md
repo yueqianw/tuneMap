@@ -16,6 +16,8 @@
 
 TuneScape is an web application that generates music compositions based on locations and their images. By combining Google Maps integration, AI-powered image analysis, and advanced music generation technology, users can explore the world and create location-inspired melodies.
 
+For music generation, we have implemented two different approaches. For details about the other method, please check the main branch.
+
 ###  Key Features
 
 - **Interactive Map Interface**: Seamless Google Maps integration with location search, filtering, and selection

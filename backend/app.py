@@ -1,7 +1,5 @@
 # app.py
-from dotenv import load_dotenv
 
-load_dotenv()
 
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
