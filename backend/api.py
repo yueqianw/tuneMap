@@ -9,17 +9,17 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 CORS(app)
 
-# 创建临时文件夹存储上传的图片和生成的音频
+
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 允许的图片文件扩展名
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# 请求结束后清理临时目录
+
 @app.teardown_request
 def cleanup_temp_dir(exc):
     temp_dir = getattr(g, 'temp_dir', None)
@@ -31,42 +31,42 @@ def cleanup_temp_dir(exc):
 
 @app.before_request
 def make_temp_dir():
-    # 在每个请求前创建一个隔离 temp 目录
+   
     g.temp_dir = tempfile.mkdtemp(dir=UPLOAD_FOLDER)
 
 @app.route('/api/generate-music', methods=['POST'])
 def api_generate_music():
     try:
-        # ---- 延迟导入，避免容器启动时卡住 ----
+     
         from music_generate import generate_music
         # ---------------------------------------
 
-        # 从 g.temp_dir 获取当前请求专属临时目录
+    
         temp_dir = g.temp_dir
         image_paths = []
 
-        # 校验上传文件
+  
         if 'images' not in request.files:
             return jsonify({'error': 'No image files uploaded'}), 400
 
-        # 读取坐标
+     
         try:
             lat = float(request.form.get('latitude'))
             lon = float(request.form.get('longitude'))
         except (TypeError, ValueError):
             return jsonify({'error': 'Invalid coordinate format'}), 400
 
-        # 可选参数：风格、是否精炼描述
+ 
         style_override = request.form.get('style')
         refine_description = request.form.get('refine_description', 'true').lower() == 'true'
 
-        # 可选参数：生成时长（秒）
+   
         try:
             duration_sec = int(request.form.get('duration_sec', 30))
         except ValueError:
             return jsonify({'error': 'Invalid duration_sec'}), 400
 
-        # 保存上传的图片
+   
         images = request.files.getlist('images')
         for image in images:
             if image and allowed_file(image.filename):
@@ -78,10 +78,10 @@ def api_generate_music():
         if not image_paths:
             return jsonify({'error': 'No valid image files'}), 400
 
-        # 生成输出文件路径
+     
         output_file = os.path.join(temp_dir, 'generated_music.wav')
 
-        # 调用核心生成函数，传入 duration_sec
+     
         result_path = generate_music(
             image_paths=image_paths,
             coords=(lat, lon),
@@ -91,7 +91,7 @@ def api_generate_music():
             duration_sec=duration_sec
         )
 
-        # 返回音频
+    
         return send_file(
             result_path,
             mimetype='audio/wav',
