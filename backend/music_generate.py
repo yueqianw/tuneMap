@@ -102,12 +102,12 @@ def smart_traditional_mode(country:str)->str|None:
                 text = page.summary.lower()
                 for pat,desc in KEYWORDS.items():
                     if re.search(pat,text):
-                        print(f"[Smart-Mode] Wiki 捕获 «{desc}»")
+                        print(f"[Smart-Mode] Wiki catch «{desc}»")
                         return desc
         except Exception:
             pass
     else:
-        print("[Smart-Mode] wikipedia 模块缺失，跳过 Wiki 查询")
+        print("[Smart-Mode] wikipedia modal lost，skip Wiki search")
 
     # ② LLM
     try:
@@ -153,7 +153,7 @@ def generate_music(
     for p in image_paths:
         if not os.path.isfile(p): raise FileNotFoundError(p)
 
-    # 地理
+    # geo
     lat,lon=coords
     loc=geolocator.reverse((lat,lon),language="en")
     addr=loc.raw["address"] if loc and"address"in loc.raw else {}
@@ -161,7 +161,7 @@ def generate_music(
     region_label=", ".join(dict.fromkeys([addr.get(k,"") for k in("city","state","country")])).strip(", ") \
                  or f"Lat {lat:.2f}, Lon {lon:.2f}"
 
-    # 图像描述 & cues
+    # img description & cues
     imgs,descs,cues=[],[],[]
     for p in image_paths:
         img=Image.open(p).convert("RGB").resize((224,224))
@@ -184,7 +184,7 @@ def generate_music(
     trad_mode=smart_traditional_mode(country)
     mode_phrase=f"in the traditional {trad_mode} mode" if trad_mode else f"in a {key_mode} tonality"
 
-    # 风格
+    # style
     style=style_hint.strip()
     if not style:
         with torch.no_grad():
@@ -218,9 +218,9 @@ def generate_music(
     print(f"[✓] 生成：{output_wav}")
     return output_wav
 
-# 调用示例
+# call sample
 if __name__ == '__main__':
-    # 示例：目录转列表
+
     import glob
     img_dir = 'D:/semester_1_year_1/CPAC/music-map/public/images'
     imgs = glob.glob(os.path.join(img_dir, '*.jpg')) + glob.glob(os.path.join(img_dir, '*.png'))
