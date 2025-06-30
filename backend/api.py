@@ -114,5 +114,5 @@ def health_check():
     return jsonify({'status': 'healthy', 'service': 'music-generator'}), 200
 
 if __name__ == '__main__':
-    # 本地开发模式：关闭 reloader，避免双重加载
+   
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
